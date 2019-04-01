@@ -1,0 +1,29 @@
+{description, "node_package template for OTP application"}.
+{variables, [
+             {name, "myapp", "Name of the package"},
+             {desc, "An OTP application", "Short description of the app"}
+            ]}.
+
+{dir, "{{name}}"}.
+{dir, "{{name}}/config"}.
+{dir, "{{name}}/config/files"}.
+{dir, "{{name}}/apps"}.
+{dir, "{{name}}/apps/{{name}}"}.
+{dir, "{{name}}/apps/{{name}}/priv"}.
+{dir, "{{name}}/apps/{{name}}/priv/cuttlefish"}.
+
+{template, "node_package_Makefile", "{{name}}/Makefile"}.
+{template, "node_package_pkg_vars.config", "{{name}}/pkg.vars.config"}.
+{template, "node_package_rebar.config", "{{name}}/rebar.config"}.
+{template, "node_package/config/dist-vars.config", "{{name}}/config/dist-vars.config"}.
+{template, "node_package/config/prod-vars.config", "{{name}}/config/prod-vars.config"}.
+{template, "node_package/config/files/_empty", "{{name}}/config/files/_empty"}.
+{template, "node_package/config/files/admin", "{{name}}/config/files/{{name}}-admin"}.
+{chmod, "{{name}}/config/files/{{name}}-admin", 8#755}.
+{template, "node_package/config/files/sys.config", "{{name}}/config/files/sys.config"}.
+{template, "node_package/cuttlefish/app.schema", "{{name}}/apps/{{name}}/priv/cuttlefish/{{name}}.schema"}.
+{template, "node_package/cuttlefish/erlang_vm.schema", "{{name}}/apps/{{name}}/priv/cuttlefish/erlang_vm.schema"}.
+{template, "node_package/cuttlefish/logger.schema", "{{name}}/apps/{{name}}/priv/cuttlefish/logger.schema"}.
+{template, "node_package/app.erl", "{{name}}/apps/{{name}}/src/{{name}}_app.erl"}.
+{template, "node_package/sup.erl", "{{name}}/apps/{{name}}/src/{{name}}_sup.erl"}.
+{template, "node_package/otp_app.app.src", "{{name}}/apps/{{name}}/src/{{name}}.app.src"}.

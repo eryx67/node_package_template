@@ -1,0 +1,139 @@
+REPO		?= {{name}}
+DIST_TAG_FILE   ?= $(REPO)-vsn.git
+DIST_BUILD       := $(shell if [ ! -d .git ]; then echo 1; fi)
+REPO_TAG        ?= $(if $(DIST_BUILD),$(shell cat $(DIST_TAG_FILE)),$(shell git describe --tags))
+REVISION         = $(shell echo $(REPO_TAG) | sed -e 's/^$(REPO)-//')
+MAJOR_VERSION	?= $(shell echo $(REVISION) | sed -e 's/\([0-9.]*\)-.*/\1/')
+PKG_REVISION    ?= $(REPO_TAG)
+PKG_VERSION	?= $(shell echo $(REPO_TAG) | sed -e 's/^$(REPO)-//' | tr - .)
+PKG_ID          ?= $(REPO)-$(PKG_VERSION)
+BASE_DIR         = $(shell pwd)
+ERLANG_BIN       = $(shell dirname $(shell which erl))
+REBAR           ?= $(if $(shell which rebar3),$(shell which rebar3),$(BASE_DIR)/rebar3)
+OVERLAY_VARS    ?=
+PKG_BUILD       := 1
+PROFILE         ?= $(if $(DIST_BUILD),dist,prod)
+
+$(if $(ERLANG_BIN),,$(warning "Warning: No Erlang found in your path, this will probably not work"))
+
+ifndef DIST_BUILD
+
+.PHONY: rel test edoc
+
+all: compile
+
+compile:
+	$(REBAR) compile
+
+deps:
+	$(REBAR) as $(PROFILE) deps
+
+install_deps:
+	$(REBAR) as $(PROFILE) install_deps
+
+clean:
+	$(REBAR) clean; $(REBAR) as $(PROFILE) clean
+
+test:
+	${REBAR} ct
+
+doc: edoc
+
+edoc:
+	${REBAR} edoc
+
+xref:
+	${REBAR} xref
+
+tar:
+	$(REBAR) as $(PROFILE) tar --overlay_vars config/$(PROFILE)-vars.config && \
+	cp _build/$(PROFILE)/rel/$(REPO)/$(REPO)-$(MAJOR_VERSION).tar.gz ./
+
+archive_git = git archive --format=tar --prefix=$(1)/ HEAD | (cd $(2) && tar xf -)
+
+archive = $(call archive_git,$(1),$(2))
+
+CLONEDIR ?= $(REPO)-clone
+get_dist_deps_git = \
+		git clone . distdir/$(CLONEDIR) && \
+		(cd distdir/$(CLONEDIR); git checkout $(REPO_TAG))
+
+get_dist_deps = mkdir -p distdir && \
+		rm -rf distdir/$(CLONEDIR) && \
+		$(call get_dist_deps_git); \
+		cd distdir/$(CLONEDIR) && \
+		$(MAKE) install_deps && \
+		$(REBAR) vendor store && \
+		echo $(REPO_TAG) > $(DIST_TAG_FILE) && \
+		rm -rf _build
+
+build_clean_dir = rm -rf distdir/$(PKG_ID) && \
+	cd distdir/$(CLONEDIR) && \
+	$(call archive,$(PKG_ID),..) && \
+	cp $(DIST_TAG_FILE) ../$(PKG_ID)/ && \
+	mkdir -p ../$(PKG_ID)/_checkouts && \
+	for dep in deps/*.zip; do \
+	  unzip -q $${dep} -d ../$(PKG_ID)/_checkouts; \
+	done && \
+	for dep in plugin_deps/*.zip; do \
+	  if [ ! -d ../$(PKG_ID)/_checkouts/$$(basename -s .zip $${dep} | sed -e 's/-[0-9a-f.-]\+//') ]; then \
+	    unzip -q $${dep} -d ../$(PKG_ID)/_checkouts; \
+	  fi; \
+	done && \
+	chmod 755 ../$(PKG_ID)/_checkouts/node_package/rebar && \
+	cd ../..
+
+distdir/$(CLONEDIR)/$(DIST_TAG_FILE):
+	$(if $(REPO_TAG), $(call get_dist_deps), $(error "You can't generate a release tarball from a non-tagged revision. Run 'git checkout <tag>', then 'make dist'"))
+
+distdir/$(PKG_ID): distdir/$(CLONEDIR)/$(DIST_TAG_FILE)
+	$(call build_clean_dir)
+
+distdir/$(PKG_ID).tar.gz: distdir/$(PKG_ID)
+	tar -C distdir -czf distdir/$(PKG_ID).tar.gz $(PKG_ID)
+
+dist: distdir/$(PKG_ID).tar.gz
+	cp distdir/$(PKG_ID).tar.gz ./$(PKG_ID)-dist.tar.gz
+
+else
+
+distdir/$(PKG_ID):
+	mkdir -p distdir/$(PKG_ID) && \
+	tar -cf - --exclude=distdir . | (cd distdir/$(PKG_ID) && tar xf -); \
+
+distdir/$(PKG_ID).tar.gz: distdir/$(PKG_ID)
+	tar -C distdir -czf distdir/$(PKG_ID).tar.gz $(PKG_ID)
+
+endif
+
+rel:
+ifeq ($(OVERLAY_VARS),)
+	$(REBAR) as $(PROFILE) release --overlay_vars config/$(PROFILE)-vars.config
+else
+	cat config/$(PROFILE)-vars.config > vars_pkg.config
+	cat $(OVERLAY_VARS) >> vars_pkg.config
+	$(REBAR) as $(PROFILE) release --overlay_vars vars_pkg.config
+	cp _build/$(PROFILE)/rel/$(REPO)/bin/start_clean.boot _build/$(PROFILE)/rel/$(REPO)/releases/$(MAJOR_VERSION)/start_clean.boot
+	cp _build/$(PROFILE)/rel/$(REPO)/bin/no_dot_erlang.boot _build/$(PROFILE)/rel/$(REPO)/releases/$(MAJOR_VERSION)/no_dot_erlang.boot
+
+endif
+
+relclean:
+	rm -rf _build/$(PROFILE)/rel vars_pkg.config
+
+distclean: clean relclean pkgclean
+	$(REBAR) clean -a; $(REBAR) as $(PROFILE) clean -a
+	rm -rf $(PKG_ID)-dist.tar.gz $(REPO)-$(MAJOR_VERSION).tar.gz
+
+ballclean:
+	rm -rf $(PKG_ID).tar.gz distdir
+
+pkgclean: ballclean
+	rm -rf package
+
+package: distdir/$(PKG_ID).tar.gz
+	ln -s distdir package
+	$(MAKE) -C package -f $(PKG_ID)/_checkouts/node_package/Makefile DEPS_DIR=_checkouts
+
+.PHONY: package
+export PKG_VERSION PKG_ID PKG_BUILD BASE_DIR ERLANG_BIN REBAR OVERLAY_VARS RELEASE

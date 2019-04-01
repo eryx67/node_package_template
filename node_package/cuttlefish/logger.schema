@@ -1,0 +1,112 @@
+%% -*-  coding: utf-8; mode: erlang; erlang-indent-level: 4; indent-tabs-mode: nil -*-
+%% @doc Log level
+{mapping, "log.level", "kernel.logger_level",
+ [{datatype, {enum, [emergency
+                    , alert
+                    , critical
+                    , error
+                    , warning
+                    , notice
+                    , info
+                    , debug]}}
+ , {default, notice}
+ ]}.
+
+%% @doc Errors log file, without rotation
+{mapping, "log.error.file", "kernel.logger",
+ [{datatype, string}
+ , {default, "errors.log"}
+ ]}.
+
+{mapping, "log.error.level", "kernel.logger",
+ [{datatype, {enum, [emergency
+                    , alert
+                    , critical
+                    , error
+                    , warning
+                    , notice
+                    , info
+                    , debug]}}
+ , {default, "error"}
+ ]}.
+
+%% @doc Common disk log with rotation
+{mapping, "log.disk.file", "kernel.logger",
+ [{datatype, string}
+ , {default, "erlang.log"}
+ ]}.
+
+{mapping, "log.disk.level", "kernel.logger",
+ [{datatype, {enum, [emergency
+                    , alert
+                    , critical
+                    , error
+                    , warning
+                    , notice
+                    , info
+                    , debug]}}
+ , {default, debug}
+ ]}.
+
+%% @doc Console log
+{mapping, "log.console.level", "kernel.logger",
+ [{datatype, {enum, [emergency
+                    , alert
+                    , critical
+                    , error
+                    , warning
+                    , notice
+                    , info
+                    , debug]}}
+ , {default, info}
+ ]}.
+
+{translation, "kernel.logger",
+ fun (Conf) ->
+         ErrorFile = "{{=<< >>=}}{{runner_log_dir}}<<={{ }}=>>/" ++ cuttlefish:conf_get("log.error.file", Conf),
+         DiskFile = "{{=<< >>=}}{{runner_log_dir}}<<={{ }}=>>/" ++ cuttlefish:conf_get("log.disk.file", Conf),
+
+         ErrorLevel   = cuttlefish:conf_get("log.error.level", Conf),
+         DiskLevel    = cuttlefish:conf_get("log.disk.level", Conf),
+         ConsoleLevel = cuttlefish:conf_get("log.console.level", Conf),
+
+         Formatter = {logger_formatter, #{ %% chars_limit => 1024
+                                           depth => 128
+                                         , max_size => 1024
+                                           %%, single_line => true
+                                         , template => [time," ",level," ",pid," ",file,":",line," :\n",msg,"\n"]
+                                         }
+                     },
+         OverloadConfig = #{sync_mode_qlen => 1000
+                           , drop_mode_qlen => 1000
+                           , flush_qlen => 2000
+                           , burst_limit_enable => true
+                           , burst_limit_max_count => 50
+                           , burst_limit_window_time => 1000
+                           , overload_kill_enable => true
+                           },
+         [{handler, disk, logger_disk_log_h,
+           #{level => DiskLevel
+            , config => OverloadConfig#{ file => DiskFile
+                                       , type => wrap
+                                       , max_no_files => 10
+                                       , max_no_bytes => 10485760
+                                       }
+            , formatter => Formatter
+            }
+          }
+         , {handler, errors, logger_std_h,
+            #{ level => ErrorLevel
+             , config => OverloadConfig#{ type => {file, ErrorFile}}
+             , formatter => Formatter
+             }
+           }
+         , {handler, default, logger_std_h,
+            #{level => ConsoleLevel
+             , config => OverloadConfig#{ type => standard_io}
+             , formatter => Formatter
+             }
+           }
+         ]
+ end
+}.
