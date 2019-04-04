@@ -65,12 +65,14 @@ get_dist_deps = mkdir -p distdir && \
 		$(MAKE) install_deps && \
 		$(REBAR) vendor store && \
 		echo $(REPO_TAG) > $(DIST_TAG_FILE) && \
+		sed -i.bak 's/semver/"$(MAJOR_VERSION)"/' rebar.config && \
 		rm -rf _build
 
 build_clean_dir = rm -rf distdir/$(PKG_ID) && \
 	cd distdir/$(CLONEDIR) && \
 	$(call archive,$(PKG_ID),..) && \
 	cp $(DIST_TAG_FILE) ../$(PKG_ID)/ && \
+	cp rebar.config ../$(PKG_ID)/ && \
 	mkdir -p ../$(PKG_ID)/_checkouts && \
 	for dep in deps/*.zip; do \
 	  unzip -q $${dep} -d ../$(PKG_ID)/_checkouts; \
@@ -108,11 +110,11 @@ endif
 
 rel:
 ifeq ($(OVERLAY_VARS),)
-	$(REBAR) as $(PROFILE) release -n $(REPO) -v $(MAJOR_VERSION) --overlay_vars config/$(PROFILE)-vars.config
+	$(REBAR) as $(PROFILE) release --overlay_vars config/$(PROFILE)-vars.config
 else
 	cat config/$(PROFILE)-vars.config > vars_pkg.config
 	cat $(OVERLAY_VARS) >> vars_pkg.config
-	$(REBAR) as $(PROFILE) release  -n $(REPO) -v $(MAJOR_VERSION) --overlay_vars vars_pkg.config
+	$(REBAR) as $(PROFILE) release --overlay_vars vars_pkg.config
 	cp _build/$(PROFILE)/rel/$(REPO)/bin/start_clean.boot _build/$(PROFILE)/rel/$(REPO)/releases/$(MAJOR_VERSION)/start_clean.boot
 	cp _build/$(PROFILE)/rel/$(REPO)/bin/no_dot_erlang.boot _build/$(PROFILE)/rel/$(REPO)/releases/$(MAJOR_VERSION)/no_dot_erlang.boot
 
